@@ -1,0 +1,294 @@
+// src/pages/PropertyDetail.js
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { StarIcon, HeartIcon, ShareIcon, CalendarIcon, UserIcon } from '@heroicons/react/solid';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import ReviewList from '../components/ReviewList';
+import { useAuth } from '../context/AuthContext';
+
+const PropertyDetail = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [property, setProperty] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [startDate, setStartDate] = useState(null);
+  const [endDate, setEndDate] = useState(null);
+  const [guests, setGuests] = useState(1);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+
+  useEffect(() => {
+    const fetchProperty = async () => {
+      try {
+        const [propertyRes, reviewsRes] = await Promise.all([
+          axios.get(`/api/properties/${id}`),
+          axios.get(`/api/reviews/property/${id}`)
+        ]);
+        setProperty(propertyRes.data);
+        setReviews(reviewsRes.data);
+      } catch (err) {
+        setError(err.response?.data?.error || 'Failed to fetch property');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProperty();
+  }, [id]);
+
+  const handleBookNow = async () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    if (!startDate || !endDate) {
+      alert('Please select check-in and check-out dates');
+      return;
+    }
+
+    try {
+      const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+      const totalPrice = days * property.price;
+
+      await axios.post('/api/bookings', {
+        property: id,
+        user: user._id,
+        startDate,
+        endDate,
+        guests,
+        totalPrice
+      });
+
+      alert('Booking successful!');
+      navigate('/bookings');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to book property');
+    }
+  };
+
+  const handleAddReview = async () => {
+    if (!reviewText) {
+      alert('Please enter your review');
+      return;
+    }
+
+    try {
+      const res = await axios.post('/api/reviews', {
+        property: id,
+        user: user._id,
+        rating: reviewRating,
+        comment: reviewText
+      });
+      
+      setReviews([...reviews, res.data]);
+      setReviewText('');
+      setReviewRating(5);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add review');
+    }
+  };
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-64">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="text-center py-12 text-red-500">{error}</div>;
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="relative">
+              <img
+                src={property.images[0] || '/placeholder.jpg'}
+                alt={property.title}
+                className="w-full h-96 object-cover"
+              />
+              <button
+                onClick={() => setIsFavorite(!isFavorite)}
+                className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-md"
+              >
+                <HeartIcon
+                  className={`h-6 w-6 ${isFavorite ? 'text-rose-500 fill-current' : 'text-gray-400'}`}
+                />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="flex justify-between items-start">
+                <h1 className="text-2xl font-bold text-gray-900">{property.title}</h1>
+                <div className="flex items-center">
+                  <StarIcon className="h-5 w-5 text-rose-500" />
+                  <span className="ml-1 text-gray-700">
+                    {property.rating ? property.rating.toFixed(1) : 'New'}
+                  </span>
+                </div>
+              </div>
+              <p className="mt-2 text-gray-600">{property.location}</p>
+              
+              <div className="mt-6 border-t border-gray-200 pt-6">
+                <h2 className="text-lg font-medium text-gray-900">About this place</h2>
+                <p className="mt-2 text-gray-600">{property.description}</p>
+              </div>
+              
+              <div className="mt-6 border-t border-gray-200 pt-6">
+                <h2 className="text-lg font-medium text-gray-900">Amenities</h2>
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  {property.amenities.map((amenity, index) => (
+                    <div key={index} className="flex items-center">
+                      <span className="h-5 w-5 text-rose-500 mr-2">✓</span>
+                      <span className="text-gray-600">{amenity}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-8 bg-white rounded-lg shadow-md overflow-hidden">
+            <div className="p-6">
+              <h2 className="text-lg font-medium text-gray-900">Reviews</h2>
+              <ReviewList reviews={reviews} />
+              
+              {user && (
+                <div className="mt-6 border-t border-gray-200 pt-6">
+                  <h3 className="text-md font-medium text-gray-900">Add a review</h3>
+                  <div className="mt-4">
+                    <div className="flex items-center mb-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <StarIcon
+                          key={star}
+                          className={`h-6 w-6 cursor-pointer ${star <= reviewRating ? 'text-rose-500' : 'text-gray-300'}`}
+                          onClick={() => setReviewRating(star)}
+                        />
+                      ))}
+                    </div>
+                    <textarea
+                      className="w-full border border-gray-300 rounded-md p-2"
+                      rows="3"
+                      placeholder="Share your experience..."
+                      value={reviewText}
+                      onChange={(e) => setReviewText(e.target.value)}
+                    ></textarea>
+                    <button
+                      onClick={handleAddReview}
+                      className="mt-2 bg-rose-500 text-white px-4 py-2 rounded-md hover:bg-rose-600"
+                    >
+                      Submit Review
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div>
+          <div className="sticky top-4 bg-white rounded-lg shadow-md overflow-hidden p-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="text-2xl font-bold text-gray-900">${property.price}</span>
+                <span className="text-gray-600"> / night</span>
+              </div>
+              <div className="flex items-center">
+                <StarIcon className="h-5 w-5 text-rose-500" />
+                <span className="ml-1 text-gray-700">
+                  {property.rating ? property.rating.toFixed(1) : 'New'}
+                </span>
+              </div>
+            </div>
+            
+            <div className="mt-6 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Check-in</label>
+                <div className="mt-1 relative">
+                  <DatePicker
+                    selected={startDate}
+                    onChange={(date) => setStartDate(date)}
+                    selectsStart
+                    startDate={startDate}
+                    endDate={endDate}
+                    minDate={new Date()}
+                    className="w-full border border-gray-300 rounded-md p-2"
+                    placeholderText="Add date"
+                  />
+                  <CalendarIcon className="h-5 w-5 text-gray-400 absolute right-2 top-2" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Check-out</label>
+                <div className="mt-1 relative">
+                  <DatePicker
+                    selected={endDate}
+                    onChange={(date) => setEndDate(date)}
+                    selectsEnd
+                    startDate={startDate}
+                    endDate={endDate}
+                    minDate={startDate || new Date()}
+                    className="w-full border border-gray-300 rounded-md p-2"
+                    placeholderText="Add date"
+                  />
+                  <CalendarIcon className="h-5 w-5 text-gray-400 absolute right-2 top-2" />
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700">Guests</label>
+              <div className="mt-1 relative">
+                <select
+                  value={guests}
+                  onChange={(e) => setGuests(parseInt(e.target.value))}
+                  className="w-full border border-gray-300 rounded-md p-2"
+                >
+                  {[1, 2, 3, 4, 5, 6].map((num) => (
+                    <option key={num} value={num}>
+                      {num} {num === 1 ? 'guest' : 'guests'}
+                    </option>
+                  ))}
+                </select>
+                <UserIcon className="h-5 w-5 text-gray-400 absolute right-2 top-2" />
+              </div>
+            </div>
+            
+            <button
+              onClick={handleBookNow}
+              className="mt-6 w-full bg-rose-500 text-white py-3 rounded-md font-medium hover:bg-rose-600"
+            >
+              Book now
+            </button>
+            
+            <div className="mt-4 text-center text-sm text-gray-500">
+              You won't be charged yet
+            </div>
+            
+            <div className="mt-6 border-t border-gray-200 pt-6">
+              <div className="flex justify-between">
+                <span className="text-gray-600">${property.price} x 1 night</span>
+                <span className="text-gray-900">${property.price}</span>
+              </div>
+              <div className="flex justify-between mt-2">
+                <span className="text-gray-600">Service fee</span>
+                <span className="text-gray-900">$15</span>
+              </div>
+              <div className="flex justify-between mt-4 font-medium text-gray-900">
+                <span>Total</span>
+                <span>${property.price + 15}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PropertyDetail;
